@@ -1,0 +1,10 @@
+*.txt
+*.json
+*.csv
+
+*.pdf
+*.pbix
+
+*.xml
+*.iml
+*.zip
