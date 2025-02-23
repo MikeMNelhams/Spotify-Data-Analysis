@@ -4,7 +4,7 @@ It's fun to get statistics on your all-time Spotify data!
 For example, I have **~7,200** unique artists listened to!
 
 -----
-## How to Use:
+## How to Use for your extended streaming history:
 
 1. Visit your Spotify account: https://www.spotify.com/us/account/privacy/. <br>
 Scroll to the bottom and download your 'Extended streaming history'.<br><br>
@@ -18,3 +18,5 @@ streaming_history_audios_to_csv(f"Spotify Extended Streaming History/{username}/
 
 append_all_to_csv(f"Spotify History Audio/{username}/")
 ```
+
+I am planning to next introduce album completion rates and possibly publish my PowerBI workflow I have been using.
