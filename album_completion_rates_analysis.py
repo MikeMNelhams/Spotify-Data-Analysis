@@ -1,6 +1,7 @@
 import urllib.parse
 from urllib import request
 import urllib.response
+from urllib.error import HTTPError
 
 import pandas as pd
 from file_operations_mn.file_writers import TextWriterSingleLine
@@ -63,6 +64,41 @@ class Tracks:
         return pd.DataFrame([track.to_list() for track in self.tracks], columns=self.tracks[0].columns)
 
 
+def try_make_request(url_request: request.Request, max_attempts: int = 3,
+                     rate_limit_break_time: float = 2,
+                     artificial_wait_time: int = 30 / 100) -> dict:
+    is_rate_limited = True
+    attempts = 0
+    content = None
+
+    while is_rate_limited:
+        if attempts >= max_attempts:
+            raise API_RateLimitError(max_attempts)
+
+        try:
+            with request.urlopen(url_request) as response:
+                is_rate_limited = response.status == 429
+
+                if not is_rate_limited:
+                    content = json.loads(response.read().decode("utf-8"))
+
+        except HTTPError as e:
+            headers = e.headers
+
+            print(headers)
+            time.sleep(float(headers["Retry-After"]))
+            is_rate_limited = True
+
+        attempts += 1
+
+        if is_rate_limited:
+            time.sleep(rate_limit_break_time)
+
+        time.sleep(artificial_wait_time)
+
+    return content
+
+
 def authorize(client_id: str, client_secret: str, access_token_path: str) -> dict:
     token_url = "https://accounts.spotify.com/api/token"
 
@@ -73,9 +109,7 @@ def authorize(client_id: str, client_secret: str, access_token_path: str) -> dic
     header = {"Content-Type": "application/x-www-form-urlencoded"}
 
     spotify_authorisation_request = request.Request(token_url, headers=header, data=data)
-
-    with request.urlopen(spotify_authorisation_request) as response:
-        content: dict = json.loads(response.read().decode("utf-8"))
+    content = try_make_request(spotify_authorisation_request)
 
     TextWriterSingleLine(access_token_path).save(content["access_token"])
     return content
@@ -91,47 +125,21 @@ def get_spotify_track(track_id: str, access_token: str) -> dict:
 
     spotify_request = request.Request(track_url, headers=headers)
 
-    with request.urlopen(spotify_request) as response:
-        content = json.loads(response.read().decode("utf-8"))
-
+    content = try_make_request(spotify_request)
     return content
 
 
-def get_spotify_tracks(track_ids: list[str], access_token: str,
-                       max_attempts: int = 3, rate_limit_break_time: float = 2,
-                       artificial_wait_time: int = 30 / 100) -> dict:
-    is_rate_limited = True
-    attempts = 0
-    content = None
+def get_spotify_tracks(track_ids: list[str], access_token: str) -> dict:
+    track_ids_suffix = '%2C'.join(str(x[0].split(':')[-1]) for x in track_ids[:4])
+    track_url = f"https://api.spotify.com/v1/tracks?market=GB&ids={track_ids_suffix}"
 
-    while is_rate_limited:
-        if attempts >= max_attempts:
-            raise API_RateLimitError(max_attempts)
+    headers = {
+        "redirect_uri": "data-analysis-mn-login://callback",
+        "Authorization": f"Bearer {access_token}"
+    }
 
-        track_ids_suffix = '%2C'.join(str(x[0].split(':')[-1]) for x in track_ids[:4])
-        track_url = f"https://api.spotify.com/v1/tracks?market=GB&ids={track_ids_suffix}"
-
-        headers = {
-            "redirect_uri": "data-analysis-mn-login://callback",
-            "Authorization": f"Bearer {access_token}"
-        }
-
-        spotify_request = request.Request(track_url, headers=headers)
-
-        with request.urlopen(spotify_request) as response:
-            is_rate_limited = response.status == 429
-
-            if not is_rate_limited:
-                content = json.loads(response.read().decode("utf-8"))
-
-        attempts += 1
-
-        if is_rate_limited:
-            time.sleep(rate_limit_break_time)
-
-        time.sleep(artificial_wait_time)
-
-    return content
+    spotify_request = request.Request(track_url, headers=headers)
+    return try_make_request(spotify_request)
 
 
 def get_album(album_id: str, access_token: str) -> dict:
@@ -143,11 +151,7 @@ def get_album(album_id: str, access_token: str) -> dict:
     }
 
     spotify_request = request.Request(album_url, headers=headers)
-
-    with request.urlopen(spotify_request) as response:
-        content = json.loads(response.read().decode("utf-8"))
-
-    return content
+    return try_make_request(spotify_request)
 
 
 def parse_tracks(tracks_info: list[dict], album_name: str, album_id: str) -> list[TrackMinimal]:
