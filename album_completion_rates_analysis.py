@@ -8,6 +8,7 @@ from file_operations_mn.file_writers import TextWriterSingleLine
 from api_exceptions import API_BatchSizeTooLargeError, API_RateLimitError
 
 import time
+import datetime
 import json
 import pyodbc
 
@@ -19,6 +20,8 @@ REDIRECT_URI = "data-analysis-mn-login://callback"
 SERVER = TextWriterSingleLine("SQL_Server_name.txt").load()
 DATABASE = "spotify_data"
 API_MAX_TRACK_IDS_BATCH_SIZE = 50
+
+ACCESS_TOKEN_PATH = "access_token.txt"
 
 
 class Artist:
@@ -64,9 +67,9 @@ class Tracks:
         return pd.DataFrame([track.to_list() for track in self.tracks], columns=self.tracks[0].columns)
 
 
-def try_make_request(url_request: request.Request, max_attempts: int = 3,
+def try_make_request(url_request: request.Request, max_attempts: int = 2,
                      rate_limit_break_time: float = 2,
-                     artificial_wait_time: int = 30 / 100) -> dict:
+                     artificial_wait_time: int = 30 / 50) -> dict:
     is_rate_limited = True
     attempts = 0
     content = None
@@ -77,17 +80,21 @@ def try_make_request(url_request: request.Request, max_attempts: int = 3,
 
         try:
             with request.urlopen(url_request) as response:
-                is_rate_limited = response.status == 429
-
-                if not is_rate_limited:
-                    content = json.loads(response.read().decode("utf-8"))
+                content = json.loads(response.read().decode("utf-8"))
 
         except HTTPError as e:
             headers = e.headers
+            response_status = response.status
 
-            print(headers)
-            time.sleep(float(headers["Retry-After"]))
-            is_rate_limited = True
+            if response_status == 429:
+                is_rate_limited = True
+
+            if response_status == 498:
+                authorize_from_client_secrets()
+
+            print(f"\nError has occurred\n{headers}")
+            if "Retry-After" in headers and headers["Retry-After"] is not None:
+                time.sleep(float(headers["Retry-After"]))
 
         attempts += 1
 
@@ -236,7 +243,7 @@ def save_to_database_track_metadata(data: pd.DataFrame, sql_connection) -> None:
 
 def save_album_for_track_ids(track_ids: list[str], sql_connection, access_token: str,
                              latest_recorded_row_path: str,
-                             batch_size: int=API_MAX_TRACK_IDS_BATCH_SIZE):
+                             batch_size: int=API_MAX_TRACK_IDS_BATCH_SIZE) -> None:
     if batch_size > API_MAX_TRACK_IDS_BATCH_SIZE:
         raise API_BatchSizeTooLargeError(batch_size, API_MAX_TRACK_IDS_BATCH_SIZE)
 
@@ -256,13 +263,16 @@ def save_album_for_track_ids(track_ids: list[str], sql_connection, access_token:
     return None
 
 
-def main():
+def authorize_from_client_secrets() -> None:
     client_id = TextWriterSingleLine("client_id.txt").load()
     client_secret = TextWriterSingleLine("client_secret.txt").load()
 
-    access_token_path = "access_token.txt"
+    authorize(client_id, client_secret, ACCESS_TOKEN_PATH)
+    return None
 
-    authorize(client_id, client_secret, access_token_path)
+
+def main() -> None:
+    authorize_from_client_secrets()
 
     latest_recorded_row = int(TextWriterSingleLine("latest_recorded_track_row_number.txt").load())
 
@@ -277,7 +287,7 @@ def main():
                                 database=DATABASE,
                                 trusted_connection='yes')
 
-    access_token = TextWriterSingleLine(access_token_path).load()
+    access_token = TextWriterSingleLine(ACCESS_TOKEN_PATH).load()
     save_album_for_track_ids(track_ids=track_ids[latest_recorded_row:],
                              sql_connection=connection, access_token=access_token,
                              latest_recorded_row_path="latest_recorded_track_row_number.txt")
