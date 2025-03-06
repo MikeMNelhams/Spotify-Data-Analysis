@@ -1,4 +1,4 @@
-# Spotify Data Analysis  &nbsp; &nbsp; ![Version](https://img.shields.io/badge/Version-1.0.0-yellow.svg)
+# Spotify Data Analysis  &nbsp; &nbsp; ![Version](https://img.shields.io/badge/Version-1.0.1-yellow.svg)
 
 It's fun to get statistics on your all-time Spotify data!
 For example, I have **~7,200** unique artists listened to!

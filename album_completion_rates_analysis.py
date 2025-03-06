@@ -8,7 +8,6 @@ from file_operations_mn.file_writers import TextWriterSingleLine
 from api_exceptions import API_BatchSizeTooLargeError, API_RateLimitError
 
 import time
-import datetime
 import json
 import pyodbc
 
@@ -81,10 +80,11 @@ def try_make_request(url_request: request.Request, max_attempts: int = 2,
         try:
             with request.urlopen(url_request) as response:
                 content = json.loads(response.read().decode("utf-8"))
+                is_rate_limited = False
 
         except HTTPError as e:
             headers = e.headers
-            response_status = response.status
+            response_status = e.status
 
             if response_status == 429:
                 is_rate_limited = True
@@ -94,6 +94,7 @@ def try_make_request(url_request: request.Request, max_attempts: int = 2,
 
             print(f"\nError has occurred\n{headers}")
             if "Retry-After" in headers and headers["Retry-After"] is not None:
+
                 time.sleep(float(headers["Retry-After"]))
 
         attempts += 1
@@ -291,6 +292,8 @@ def main() -> None:
     save_album_for_track_ids(track_ids=track_ids[latest_recorded_row:],
                              sql_connection=connection, access_token=access_token,
                              latest_recorded_row_path="latest_recorded_track_row_number.txt")
+
+    return None
 
 
 if __name__ == "__main__":
