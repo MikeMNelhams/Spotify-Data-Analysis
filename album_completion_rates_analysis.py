@@ -94,7 +94,6 @@ def try_make_request(url_request: request.Request, max_attempts: int = 2,
 
             print(f"\nError has occurred\n{headers}")
             if "Retry-After" in headers and headers["Retry-After"] is not None:
-
                 time.sleep(float(headers["Retry-After"]))
 
         attempts += 1
